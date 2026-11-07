@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>eu te amo nycotina</title>
+<style>
+  :root {
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    --bg: #0c0b10;
+    --verde: #4caf6a;
+    --lirio: #f6e7f0;
+    --rosa: #ff8fb8;
+    --magenta: #d81b74;
+    --ouro: #e8d35a;
+    --laranja: #ffa530;
+    --texto: #b4b0c2;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #0c0b10; }
+  }
+  :root[data-theme="dark"] { --bg: #0c0b10; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  #cena {
+    margin: 0; line-height: 1.05; letter-spacing: 0;
+    font-size: min(2.05vw, 1.7vh, 13px);
+    transition: opacity .6s;
+  }
+  .g { color: var(--verde); }
+  .l { color: var(--lirio); }
+  .p { color: var(--rosa); }
+  .m { color: var(--magenta); }
+  .y { color: var(--ouro); }
+  .o { color: var(--laranja); }
+  .w { color: #ffffff; }
+  .wd { color: #8f8ca3; }
+  p { color: var(--texto); font-size: 16px; margin: 16px 12px 0; text-align: center; }
+</style>
+</head>
+<body>
+<pre id="cena" aria-label="Animação de um buquê de quatro lírios desabrochando"></pre>
+<p>vc é a flor mais linda q eu ja vi</p>
+<script>
+const W = 80, H = 42;
+const RAMP = ".:-=+*#%";
+const DURACAO = 12;
+const PI = Math.PI;
+const cena = document.getElementById("cena");
+
+// ponto onde todos os caules se encontram (onde fica o laço)
+const BASE = { x: 40, y: 74 };
+
+// quatro lírios juntos: posição, tamanho, direção do botão (phi),
+// inclinação (tilt: 1 = de frente, menor = mais de lado), atraso e fase do balanço.
+// A ordem é a do desenho: o último fica na frente.
+const FLORES = [
+  { x: 40, y: 22, L: 15, phi:  0.15, tilt: 0.9,  start: 0.9, ph: 0 },
+  { x: 22, y: 38, L: 15, phi: -0.75, tilt: 0.7,  start: 1.5, ph: 1.7 },
+  { x: 58, y: 38, L: 15, phi:  0.75, tilt: 0.6,  start: 2.1, ph: 3.1 },
+  { x: 40, y: 50, L: 15, phi: -0.25, tilt: 0.8,  start: 2.7, ph: 4.6 },
+];
+
+const ORDER = [0, 2, 4, 1, 3, 5];
+const A_OPEN = j => -PI / 2 + j * PI / 3;
+const DELTA = j => ((j * PI / 3 + PI) % (2 * PI)) - PI;
+const OFFS = [[1,0],[2,0],[-1,0],[-2,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]];
+
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const ease = t => t * t * (3 - 2 * t);
+const hash = (c, r) => { const s = Math.sin(c * 12.9898 + r * 78.233) * 43758.5453; return s - Math.floor(s); };
+
+// brilhos brancos espalhados em volta do buquê (posições fixas, cada um pisca no seu ritmo)
+const BRILHOS = [];
+for (let i = 0; i < 800 && BRILHOS.length < 50; i++) {
+  const x = 1 + hash(i, 1) * (W - 2), y = 1 + hash(i, 2) * (H * 2 - 2);
+  let perto = false, dentro = false;
+  for (const f of FLORES) {
+    const d = Math.hypot(x - f.x, y - f.y), R = f.L + 1;
+    if (d < R) dentro = true;
+    if (d < R + 9) perto = true;
+  }
+  if (Math.hypot(x - BASE.x, y - BASE.y) < 14) perto = true;
+  if (perto && !dentro) BRILHOS.push({ x, y, ph: hash(i, 3) * 6.283, v: 1.2 + hash(i, 4) * 2 });
+}
+
+function lily(f, t, G) {
+  const sg = ease(clamp((t - f.start + 0.2) / 0.6));     // o botão aparece na ponta do caule
+  if (sg < 0.04) return;
+  const b = ease(clamp((t - f.start) / 3));              // abertura
+  const L = (3 + 4 * sg) + (f.L - 7) * b;
+  const phi = f.phi + 0.07 * Math.sin(t * 1.1 + f.ph);
+  const cp = Math.cos(phi), sp = Math.sin(phi);
+  const tilt = 1 - (1 - f.tilt) * ease(b);
+  const cx = f.x, cy = f.y;
+
+  const lch = new Array(W * H).fill(" ");
+  const lcl = new Array(W * H).fill("");
+  const mask = new Uint8Array(W * H);
+  const put = (c, r, s, k) => {
+    if (c >= 0 && c < W && r >= 0 && r < H) { const i = r * W + c; lch[i] = s; lcl[i] = k; mask[i] = 1; }
+  };
+  const line = (x0, y0, x1, y1, s, k) => {
+    const n = Math.ceil(Math.hypot(x1 - x0, (y1 - y0) / 2)) + 1;
+    for (let i = 0; i <= n; i++) {
+      const q = i / n;
+      put(Math.floor(x0 + (x1 - x0) * q), Math.floor((y0 + (y1 - y0) * q) / 2), s, k);
+    }
+  };
+  const toScreen = (lx, ly) => [cx + lx * cp - ly * tilt * sp, cy + lx * sp + ly * tilt * cp];
+
+  // pétalas
+  const obOut = ease(clamp(b * 1.6));
+  const obIn = ease(clamp(b * 1.6 - 0.3));
+  const pet = ORDER.map(j => {
+    const inner = j % 2 === 1;
+    const ob = inner ? obIn : obOut;
+    const a = -PI / 2 + DELTA(j) * ob;
+    const Lj = L * (1 + 0.2 * ob * Math.max(0, Math.sin(A_OPEN(j))));
+    return { inner, ob, ca: Math.cos(a), sa: Math.sin(a), L: Lj, Wm: 0.3 * Lj * (inner ? 1.12 : 1) };
+  });
+
+  const R = L * 1.3 + 3;
+  const c0 = Math.max(0, Math.floor(cx - R)), c1 = Math.min(W - 1, Math.ceil(cx + R));
+  const r0 = Math.max(0, Math.floor((cy - R) / 2)), r1 = Math.min(H - 1, Math.ceil((cy + R) / 2));
+  for (let row = r0; row <= r1; row++) {
+    for (let col = c0; col <= c1; col++) {
+      const px = col + 0.5, y = row * 2 + 1;
+      const dx = px - cx, dyu = y - cy;
+      const ux = dx * cp + dyu * sp;
+      const uy = (-dx * sp + dyu * cp) / tilt;
+      let hit = null;
+      for (const p of pet) {
+        const along = ux * p.ca + uy * p.sa;
+        const perp = -ux * p.sa + uy * p.ca;
+        const u = along / p.L;
+        if (u <= 0 || u >= 1) continue;
+        let hw = p.Wm * Math.pow(Math.sin(PI * Math.pow(u, 0.75)), 0.8);
+        if (p.inner) hw *= 1 + 0.07 * Math.sin(u * 16);
+        if (Math.abs(perp) < hw) hit = { p, u, q: Math.abs(perp) / hw };
+      }
+      if (!hit) continue;
+      const { p, u, q } = hit;
+      if (p.ob < 0.35) put(col, row, q > 0.85 ? "+" : ":", "g");
+      else if (u < 0.2) put(col, row, ":", "y");
+      else if (q < 0.12 && u < 0.92) put(col, row, ":", "p");
+      else if (hash(col, row) < 0.1 && u > 0.22 && u < 0.7 && q < 0.75) put(col, row, "o", "m");
+      else if (q > 0.88 || u > 0.93) put(col, row, "*", "l");
+      else {
+        const val = clamp(0.3 + 0.5 * (1 - Math.pow(q, 1.5)) + (p.inner ? 0.1 : 0));
+        put(col, row, RAMP[Math.floor(val * (RAMP.length - 1))], u < 0.55 ? "p" : "l");
+      }
+    }
+  }
+
+  // estames e pistilo
+  if (obIn > 0.3) {
+    for (let k = 0; k < 6; k++) {
+      const ang = -PI / 2 + PI / 6 + k * PI / 3;
+      const Ls = 0.72 * L * obIn;
+      const [x1, y1] = toScreen(Math.cos(ang) * Ls, Math.sin(ang) * Ls);
+      line(cx, cy, x1, y1, ".", "y");
+      put(Math.floor(x1), Math.floor(y1 / 2), "@", "o");
+    }
+    const ap = PI / 2 - 0.5, Lp = 0.95 * L * obIn;
+    const [xp, yp] = toScreen(Math.cos(ap) * Lp, Math.sin(ap) * Lp);
+    line(cx, cy, xp, yp, ".", "l");
+    put(Math.floor(xp), Math.floor(yp / 2), "Y", "g");
+  }
+
+  // contorno preto: abre um vão escuro ao redor da flor, separando-a das outras
+  const ring = new Uint8Array(W * H);
+  for (let r = 0; r < H; r++) {
+    for (let c = 0; c < W; c++) {
+      if (!mask[r * W + c]) continue;
+      for (const [oc, or] of OFFS) {
+        const nc = c + oc, nr = r + or;
+        if (nc < 0 || nc >= W || nr < 0 || nr >= H) continue;
+        if (!mask[nr * W + nc]) ring[nr * W + nc] = 1;
+      }
+    }
+  }
+  for (let i = 0; i < W * H; i++) {
+    if (ring[i]) { G.ch[i] = " "; G.cl[i] = ""; }
+    if (mask[i]) { G.ch[i] = lch[i]; G.cl[i] = lcl[i]; }
+  }
+}
+
+function render(t) {
+  const G = { ch: new Array(W * H).fill(" "), cl: new Array(W * H).fill("") };
+  const put = (c, r, s, k) => {
+    if (c >= 0 && c < W && r >= 0 && r < H) { G.ch[r * W + c] = s; G.cl[r * W + c] = k; }
+  };
+  const line = (x0, y0, x1, y1, s, k) => {
+    const n = Math.ceil(Math.hypot(x1 - x0, (y1 - y0) / 2)) + 1;
+    for (let i = 0; i <= n; i++) {
+      const q = i / n;
+      put(Math.floor(x0 + (x1 - x0) * q), Math.floor((y0 + (y1 - y0) * q) / 2), s, k);
+    }
+  };
+
+  // caules: sobem da base até cada flor, todos se encontrando no mesmo ponto
+  const gs = ease(clamp(t / 1.0));
+  for (const f of FLORES) {
+    const dx = f.x - BASE.x, dy = f.y - BASE.y;
+    const ex = BASE.x + dx * gs, ey = BASE.y + dy * gs;
+    const c = Math.abs(dx) < 0.35 * Math.hypot(dx, dy) ? "|"
+            : Math.abs(dy) < 0.35 * Math.hypot(dx, dy) ? "-"
+            : (dx * dy > 0 ? "\\" : "/");
+    line(BASE.x, BASE.y, ex, ey, c, "g");
+    line(BASE.x + 1, BASE.y, ex + 1, ey, c, "g");
+  }
+
+  // flores
+  for (const f of FLORES) lily(f, t, G);
+
+  // laço amarrando os caules
+  if (gs > 0.9) {
+    for (let c = 35; c <= 45; c++) put(c, 34, "=", "p");
+    put(40, 34, "@", "m");
+    put(38, 33, "(", "p"); put(42, 33, ")", "p");
+    put(38, 35, "/", "p"); put(42, 35, "\\", "p");
+    put(37, 36, "/", "p"); put(43, 36, "\\", "p");
+  }
+
+  // brilhos brancos piscando em volta do desenho
+  const aparece = clamp((t - 1.2) / 1.5);
+  for (const s of BRILHOS) {
+    const c = Math.floor(s.x), r = Math.floor(s.y / 2);
+    if (G.ch[r * W + c] !== " ") continue;
+    const br = aparece * (0.5 + 0.5 * Math.sin(t * s.v + s.ph));
+    if (br > 0.8) put(c, r, "*", "w");
+    else if (br > 0.55) put(c, r, "+", "w");
+    else if (br > 0.3) put(c, r, ".", "wd");
+  }
+
+  let html = "";
+  for (let row = 0; row < H; row++) {
+    let classe = "", buf = "";
+    for (let col = 0; col < W; col++) {
+      const k = G.cl[row * W + col];
+      if (k !== classe) {
+        if (buf) html += classe ? `<span class="${classe}">${buf}</span>` : buf;
+        buf = ""; classe = k;
+      }
+      buf += G.ch[row * W + col];
+    }
+    if (buf) html += classe ? `<span class="${classe}">${buf}</span>` : buf;
+    html += "\n";
+  }
+  cena.innerHTML = html;
+}
+
+let inicio = performance.now(), ultimo = 0;
+function loop(agora) {
+  requestAnimationFrame(loop);
+  if (agora - ultimo < 33) return;
+  ultimo = agora;
+  const t = ((agora - inicio) / 1000) % DURACAO;
+  cena.style.opacity = t < 0.4 ? t / 0.4 : t > DURACAO - 0.8 ? (DURACAO - t) / 0.8 : 1;
+  render(t);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
